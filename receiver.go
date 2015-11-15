@@ -49,9 +49,9 @@ func init() {
 	spirit.RegisterReceiver(httpReceiverURN, NewHTTPReceiver)
 }
 
-func NewHTTPReceiver(options spirit.Options) (receiver spirit.Receiver, err error) {
+func NewHTTPReceiver(config spirit.Config) (receiver spirit.Receiver, err error) {
 	conf := HTTPReceiverConfig{}
-	if err = options.ToObject(&conf); err != nil {
+	if err = config.ToObject(&conf); err != nil {
 		return
 	}
 

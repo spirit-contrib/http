@@ -33,9 +33,9 @@ func init() {
 	spirit.RegisterWriterPool(writerPoolURN, NewHTTPWriterPool)
 }
 
-func NewHTTPWriterPool(options spirit.Options) (pool spirit.WriterPool, err error) {
+func NewHTTPWriterPool(config spirit.Config) (pool spirit.WriterPool, err error) {
 	conf := HTTPWriterPoolConfig{}
-	if err = options.ToObject(&conf); err != nil {
+	if err = config.ToObject(&conf); err != nil {
 		return
 	}
 
@@ -46,7 +46,7 @@ func NewHTTPWriterPool(options spirit.Options) (pool spirit.WriterPool, err erro
 	return
 }
 
-func (p *HTTPWriterPool) SetNewWriterFunc(newFunc spirit.NewWriterFunc, options spirit.Options) (err error) {
+func (p *HTTPWriterPool) SetNewWriterFunc(newFunc spirit.NewWriterFunc, config spirit.Config) (err error) {
 	return
 }
 
