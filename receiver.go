@@ -10,10 +10,6 @@ import (
 	"github.com/gogap/spirit"
 )
 
-const (
-	httpReceiverURN = "urn:spirit-contrib:receiver:http"
-)
-
 var (
 	ErrHTTPReceiverAlreadyStarted = errors.New("http receiver already started")
 )
@@ -29,8 +25,6 @@ func (p *emptyWriter) Write(v []byte) (n int, err error) {
 
 type HTTPReceiverConfig struct {
 	Address       string `json:"address"`
-	Path          string `json:"path"`
-	ContentType   string `json:"content_type"`
 	DisableLogger bool   `json:"disable_logger"`
 }
 
@@ -43,32 +37,21 @@ type HTTPReceiver struct {
 	status spirit.Status
 
 	statusLocker sync.Mutex
+
+	marti *martini.ClassicMartini
+
+	requestHandler HTTPRequestHandlerFunc
 }
 
-func init() {
-	spirit.RegisterReceiver(httpReceiverURN, NewHTTPReceiver)
-}
-
-func NewHTTPReceiver(config spirit.Config) (receiver spirit.Receiver, err error) {
-	conf := HTTPReceiverConfig{}
-	if err = config.ToObject(&conf); err != nil {
-		return
-	}
-
+func NewHTTPReceiver(conf HTTPReceiverConfig, requestHandler HTTPRequestHandlerFunc) (receiver *HTTPReceiver, err error) {
 	if conf.Address == "" {
 		conf.Address = ":8080"
 	}
 
-	if conf.Path == "" {
-		conf.Path = "/"
-	}
-
-	if conf.ContentType == "" {
-		conf.ContentType = "text/plain"
-	}
-
 	receiver = &HTTPReceiver{
-		conf: conf,
+		conf:           conf,
+		marti:          martini.Classic(),
+		requestHandler: requestHandler,
 	}
 
 	return
@@ -97,63 +80,40 @@ func (p *HTTPReceiver) Handler(res gohttp.ResponseWriter, req *gohttp.Request) {
 	var deliveries []spirit.Delivery
 	var err error
 
-	if deliveries, err = p.translator.In(req.Body); err != nil {
-		spirit.Logger().WithField("actor", "writer pool").
-			WithField("urn", httpReceiverURN).
-			WithField("event", "translator request body").
+	deliveryChan := make(chan spirit.Delivery)
+	doneChan := make(chan bool)
+
+	defer close(deliveryChan)
+	defer close(doneChan)
+
+	if deliveries, err = p.requestHandler(res, req, deliveryChan, doneChan); err != nil {
+		spirit.Logger().WithField("actor", spirit.ActorReceiver).
+			WithField("event", "call http request handler").
 			Errorln(err)
 
-		res.WriteHeader(gohttp.StatusBadRequest)
 		return
 	}
 
-	writer := newHTTPWriter(res)
-
-	writerLocker.Lock()
-	waitSignal := make(chan bool, 1)
-	for _, delivery := range deliveries {
-		httpWriters[delivery.Id()] = &writerInPool{false, writer, 0, waitSignal}
-	}
-	writerLocker.Unlock()
-
-	res.Header().Add("Content-Type", p.conf.ContentType)
+	deliveriesChan.Put(deliveryChan, deliveries...)
 
 	if err := p.putter.Put(deliveries); err != nil {
-		spirit.Logger().WithField("actor", "writer pool").
-			WithField("urn", httpReceiverURN).
-			WithField("event", "translator request body").
+		spirit.Logger().WithField("actor", spirit.ActorReceiver).
+			WithField("event", "put deliveries").
 			Errorln(err)
 
-		for _, delivery := range deliveries {
-			delete(httpWriters, delivery.Id())
-		}
+		deliveriesChan.Delete(deliveries...)
 
 		res.WriteHeader(gohttp.StatusInternalServerError)
-	}
-
-	<-waitSignal
-
-}
-
-func (p *HTTPReceiver) serve() {
-	m := martini.Classic()
-	m.Post(p.conf.Path, p.Handler)
-
-	var logger *log.Logger
-	if p.conf.DisableLogger {
-		logger = log.New(new(emptyWriter), "", 0)
 	} else {
-		logger = log.New(spirit.Logger().Writer(), "["+httpReceiverURN+"] ", 0)
+
+		// wait http request handler to finish process
+		<-doneChan
+		deliveriesChan.Delete(deliveries...)
 	}
-
-	m.Map(logger)
-
-	m.RunOnAddr(p.conf.Address)
 }
 
-func (p *HTTPReceiver) SetTranslator(translator spirit.InputTranslator) (err error) {
-	p.translator = translator
-	return
+func (p *HTTPReceiver) Group(path string, router func(martini.Router), middlerWares ...martini.Handler) {
+	p.marti.Group(path, router, middlerWares...)
 }
 
 func (p *HTTPReceiver) Stop() (err error) {
@@ -169,4 +129,17 @@ func (p *HTTPReceiver) Stop() (err error) {
 
 func (p *HTTPReceiver) Status() spirit.Status {
 	return p.status
+}
+
+func (p *HTTPReceiver) serve() {
+	var logger *log.Logger
+	if p.conf.DisableLogger {
+		logger = log.New(new(emptyWriter), "", 0)
+	} else {
+		logger = log.New(spirit.Logger().Writer(), "[http]", 0)
+	}
+
+	p.marti.Map(logger)
+
+	p.marti.RunOnAddr(p.conf.Address)
 }
