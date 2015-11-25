@@ -37,7 +37,7 @@ func init() {
 	spirit.RegisterSender(senderURN, NewHTTPSender)
 }
 
-func NewHTTPSender(config spirit.Config) (sender spirit.Sender, err error) {
+func NewHTTPSender(config spirit.Map) (sender spirit.Sender, err error) {
 	conf := HTTPSenderConfig{}
 
 	if err = config.ToObject(&conf); err != nil {
