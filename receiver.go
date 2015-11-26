@@ -66,12 +66,24 @@ func (p *HTTPReceiver) Start() (err error) {
 	p.statusLocker.Lock()
 	defer p.statusLocker.Unlock()
 
+	spirit.Logger().WithField("actor", spirit.ActorReceiver).
+		WithField("urn", "urn:spirit-contrib:receiver:http[base]").
+		WithField("event", "start").
+		Debugln("enter start")
+
 	if p.status == spirit.StatusRunning {
 		err = ErrHTTPReceiverAlreadyStarted
 		return
 	}
 
 	go p.serve()
+
+	p.status = spirit.StatusRunning
+
+	spirit.Logger().WithField("actor", spirit.ActorReceiver).
+		WithField("urn", "urn:spirit-contrib:receiver:http[base]").
+		WithField("event", "start").
+		Infoln("started")
 
 	return
 }
@@ -120,9 +132,19 @@ func (p *HTTPReceiver) Stop() (err error) {
 	p.statusLocker.Lock()
 	defer p.statusLocker.Unlock()
 
+	spirit.Logger().WithField("actor", spirit.ActorReceiver).
+		WithField("urn", "urn:spirit-contrib:receiver:http[base]").
+		WithField("event", "stop").
+		Debugln("enter stop")
+
 	if p.status == spirit.StatusStopped {
 		return
 	}
+
+	spirit.Logger().WithField("actor", spirit.ActorReceiver).
+		WithField("urn", "urn:spirit-contrib:receiver:http[base]").
+		WithField("event", "stop").
+		Infoln("stopped")
 
 	return
 }
