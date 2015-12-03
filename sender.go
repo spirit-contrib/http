@@ -18,6 +18,7 @@ var (
 
 var (
 	_ spirit.Sender = new(HTTPSender)
+	_ spirit.Actor  = new(HTTPSender)
 )
 
 type HTTPSenderConfig struct {
@@ -25,6 +26,7 @@ type HTTPSenderConfig struct {
 }
 
 type HTTPSender struct {
+	name         string
 	status       spirit.Status
 	statusLocker sync.Mutex
 
@@ -37,18 +39,27 @@ func init() {
 	spirit.RegisterSender(senderURN, NewHTTPSender)
 }
 
-func NewHTTPSender(config spirit.Map) (sender spirit.Sender, err error) {
+func NewHTTPSender(name string, options spirit.Map) (sender spirit.Sender, err error) {
 	conf := HTTPSenderConfig{}
 
-	if err = config.ToObject(&conf); err != nil {
+	if err = options.ToObject(&conf); err != nil {
 		return
 	}
 
 	sender = &HTTPSender{
+		name: name,
 		conf: conf,
 	}
 
 	return
+}
+
+func (p *HTTPSender) Name() string {
+	return p.name
+}
+
+func (p *HTTPSender) URN() string {
+	return senderURN
 }
 
 func (p *HTTPSender) SetDeliveryGetter(getter spirit.DeliveryGetter) (err error) {
